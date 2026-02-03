@@ -103,6 +103,9 @@ if (!redirectUri) {
 
   // ✅ IMPORTANT: go back where we came from
   // sécurité: on n'autorise que les chemins internes
-  if (!nextPath.startsWith("/")) nextPath = "/";
-  return NextResponse.redirect(url.origin + nextPath);
+  if (!nextPath || nextPath.includes("://") || !nextPath.startsWith("/")) {
+  nextPath = "/";
+}
+return NextResponse.redirect(url.origin + nextPath);
+
 }
