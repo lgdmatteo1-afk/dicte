@@ -105,10 +105,10 @@ export default function PlayPage() {
           {loadingMe ? (
             <span className="badge">⏳ Vérification…</span>
           ) : !me ? (
-            <a
-              className="btn"
-              href={`/api/auth/twitch/login?next=/play/${sessionId}`}
-            >
+           <a
+  className="btn"
+  href={`${window.location.origin}/api/auth/twitch/login?next=/play/${sessionId}`}
+>
               Se connecter avec Twitch
             </a>
           ) : (
@@ -125,11 +125,12 @@ export default function PlayPage() {
               />
               <div style={{ fontWeight: 900 }}>@{me.login}</div>
               <a
-                className="btn btnGhost"
-                href={`/api/auth/logout?next=/play/${sessionId}`}
-              >
-                Déconnexion
-              </a>
+  className="btn btnGhost"
+  href={`${window.location.origin}/api/auth/logout?next=/play/${sessionId}`}
+>
+  Déconnexion
+</a>
+
             </div>
           )}
         </div>

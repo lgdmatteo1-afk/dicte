@@ -189,7 +189,7 @@ export default function HostPage() {
     {last ? (last.displayName || last.pseudo) : "-"}
   </div>
 </div>
-
+    
       </div>
 
       {/* Podium */}
