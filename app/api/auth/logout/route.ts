@@ -14,5 +14,6 @@ export async function GET(req: Request) {
   const jar = await cookies();
   jar.set("twitch_user", "", { path: "/", maxAge: 0 });
 
-  return NextResponse.redirect(url.origin + nextPath);
+const baseUrl = process.env.APP_URL || url.origin;
+return NextResponse.redirect(baseUrl + nextPath);
 }
