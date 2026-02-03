@@ -1,27 +1,12 @@
-import { diffWords } from "@/lib/diff";
-import { readSessions, writeSessions } from "@/lib/persist";
+import { diffWords, computePenalty } from "@/lib/diff";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-type TwitchPayload = {
-  id?: string;
-  login?: string;
-  name?: string;
-  avatar?: string;
-};
+import { readSessions, writeSessions } from "@/lib/persist";
 
 export async function POST(req: Request) {
-  const body = await req.json();
-
-  const sessionId: string = body?.sessionId;
-  const texte: string = body?.texte ?? "";
-  const pseudo: string = body?.pseudo ?? "";
-  const twitch: TwitchPayload | undefined = body?.twitch;
-
-  if (!sessionId) return new Response("sessionId manquant", { status: 400 });
-  if (!texte.trim()) return new Response("texte manquant", { status: 400 });
-
+  const { sessionId, pseudo, texte } = await req.json();
   const sessions = readSessions();
 
   if (!sessions[sessionId]) {
@@ -31,29 +16,24 @@ export async function POST(req: Request) {
   const ref = sessions[sessionId].texteReference || "";
   const diff = diffWords(ref, texte);
 
-  const erreurs = diff.reduce((acc: number, t: any) => (t.type === "ok" ? acc : acc + 1), 0);
-  const score = Math.max(0, 1000 - erreurs * 10);
+  // ✅ penalty = points retirés (ex: 1 grosse faute = 1, faute moyenne = 0.5, etc.)
+  // ✅ erreurs = nombre d'événements d'erreur (sub/ins/del)
+  const { penalty, erreurs } = computePenalty(diff);
 
-  // ✅ pseudo final : priorité au login twitch si fourni
-  const finalPseudo = (twitch?.login || pseudo || "").trim();
-  if (!finalPseudo) return new Response("pseudo manquant", { status: 400 });
+  // Note sur 20, arrondie au demi-point, min 0
+const score = Math.max(0, Math.round((20 - penalty) * 4) / 4);
 
   sessions[sessionId].submissions.push({
-    // identités
-    pseudo: finalPseudo,                 // @login twitch (ou ancien pseudo)
-    twitchId: twitch?.id || null,
-    displayName: twitch?.name || null,
-    avatar: twitch?.avatar || null,
-
-    // contenu
+    pseudo,
     texte,
     score,
-    erreurs,
+    penalty,
+    erreurs, // ✅ important pour l'affichage "Fautes"
     diff,
     createdAt: Date.now(),
   });
 
   writeSessions(sessions);
 
-  return Response.json({ success: true });
+  return Response.json({ success: true, score, penalty, erreurs });
 }

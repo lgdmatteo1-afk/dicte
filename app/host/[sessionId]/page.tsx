@@ -5,7 +5,21 @@ import { useEffect, useMemo, useState } from "react";
 
 function severity(t: any) {
   if (!t) return 0;
-  if (t.type === "sub") return 2;
+
+  // sub = erreur de remplacement
+  if (t.type === "sub") {
+    const from = String(t.from ?? "");
+    const to = String(t.to ?? "");
+
+    // 🟠 "moyenne" si c'est très proche (ex: 1 seule lettre de différence)
+    // ex: "et" vs "est" => proche => orange
+    if (Math.abs(from.length - to.length) <= 1) return 1;
+
+    // 🔴 sinon grave
+    return 2;
+  }
+
+  // ins/del => pas de severity
   return 0;
 }
 
@@ -20,56 +34,27 @@ function buildSevereSet(diff: any[]) {
   return new Set(scored);
 }
 
-function initials(name?: string) {
-  const s = (name || "").trim();
-  if (!s) return "?";
-  const parts = s.split(/\s+/).slice(0, 2);
-  return parts.map((p) => p[0]?.toUpperCase()).join("");
+// ✅ Petit helper: retourne toujours un nombre (0 si manquant)
+// + accepte "erreurs" OU "errors" au cas où
+function getFautes(r: any) {
+  // 1) si l'API fournit erreurs, on l'utilise
+  const v = r?.erreurs ?? r?.errors;
+  if (Number.isFinite(v)) return v;
+
+  // 2) sinon on calcule depuis diff
+  const diff = r?.diff;
+  if (!Array.isArray(diff)) return 0;
+
+  // sub = mauvais mot (1 faute)
+  // ins = mot en trop (1 faute)
+  // del = mot manquant (1 faute)
+  return diff.reduce((acc: number, t: any) => {
+    if (!t) return acc;
+    if (t.type === "sub" || t.type === "ins" || t.type === "del") return acc + 1;
+    return acc;
+  }, 0);
 }
 
-function ViewerIdentity({ r, size = 36 }: { r: any; size?: number }) {
-  const display = r?.displayName || r?.pseudo || "viewer";
-  const login = r?.pseudo || "";
-  const avatar = r?.avatar;
-
-  return (
-    <div className="rankLeft">
-      {avatar ? (
-        <img
-          className={size >= 48 ? "avatar" : "avatarSm"}
-          src={avatar}
-          alt={login}
-          width={size}
-          height={size}
-          style={{ width: size, height: size }}
-        />
-      ) : (
-        <div
-          className={size >= 48 ? "avatar" : "avatarSm"}
-          style={{
-            width: size,
-            height: size,
-            display: "grid",
-            placeItems: "center",
-            fontWeight: 1000,
-            background: "rgba(59,130,246,.10)",
-            color: "rgba(29,78,216,.95)",
-            border: "1px solid rgba(59,130,246,.25)",
-          }}
-        >
-          {initials(display)}
-        </div>
-      )}
-
-      <div>
-        <div className={size >= 48 ? "podiumName" : "rankName"}>{display}</div>
-        {login && (
-          <div className={size >= 48 ? "sub" : "rankLogin"}>@{login}</div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 export default function HostPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -87,6 +72,8 @@ export default function HostPage() {
     const res = await fetch(`/api/results/${sessionId}`, { cache: "no-store" });
     const json = await res.json();
     setRows(json);
+    console.log("rows", json);
+    console.log("first diff", json?.[0]?.diff);
   }
 
   async function resetSession() {
@@ -106,6 +93,7 @@ export default function HostPage() {
     }
 
     const json = await res.json();
+    // Hard redirect => garanti nouveau panel + nouveau lien + state reset
     window.location.href = `/host/${json.sessionId}`;
   }
 
@@ -117,14 +105,13 @@ export default function HostPage() {
   }, [sessionId]);
 
   const top3 = rows.slice(0, 3);
-  const last = rows.at(-1);
 
   return (
     <main className="container">
       {/* Header */}
       <div className="row" style={{ justifyContent: "space-between" }}>
         <div>
-          <h1 className="h1">Panel Streamer</h1>
+          <h1 className="h1">ELM DICTE</h1>
           <p className="sub">Classement live + corrections + lien chat</p>
         </div>
 
@@ -181,15 +168,12 @@ export default function HostPage() {
         </div>
         <div className="kpi">
           <div className="label">Fautes min</div>
-          <div className="value">{rows[0]?.erreurs ?? "-"}</div>
+          <div className="value">{rows[0] ? getFautes(rows[0]) : "-"}</div>
         </div>
-       <div className="kpi">
-  <div className="label">Dernier participant</div>
-  <div className="value">
-    {last ? (last.displayName || last.pseudo) : "-"}
-  </div>
-</div>
-    
+        <div className="kpi">
+          <div className="label">Dernier participant</div>
+          <div className="value">{rows.at(-1)?.pseudo ?? "-"}</div>
+        </div>
       </div>
 
       {/* Podium */}
@@ -210,17 +194,13 @@ export default function HostPage() {
                 style={{ borderColor: "rgba(59,130,246,.25)" }}
               >
                 <span className="podiumRank">🥇 #1</span>
-
-                <div style={{ marginTop: 10 }}>
-                  <ViewerIdentity r={top3[0]} size={52} />
-                </div>
-
-                <div className="podiumMeta" style={{ marginTop: 10 }}>
+                <div className="podiumName">{top3[0].pseudo}</div>
+                <div className="podiumMeta">
                   <span>
                     Score <b>{top3[0].score}</b>
                   </span>
                   <span>
-                    Fautes <b>{top3[0].erreurs ?? "?"}</b>
+                    Fautes <b>{getFautes(top3[0])}</b>
                   </span>
                 </div>
               </div>
@@ -229,17 +209,13 @@ export default function HostPage() {
             {top3[1] && (
               <div className="podiumCard podium2">
                 <span className="podiumRank">🥈 #2</span>
-
-                <div style={{ marginTop: 10 }}>
-                  <ViewerIdentity r={top3[1]} size={52} />
-                </div>
-
-                <div className="podiumMeta" style={{ marginTop: 10 }}>
+                <div className="podiumName">{top3[1].pseudo}</div>
+                <div className="podiumMeta">
                   <span>
                     Score <b>{top3[1].score}</b>
                   </span>
                   <span>
-                    Fautes <b>{top3[1].erreurs ?? "?"}</b>
+                    Fautes <b>{getFautes(top3[1])}</b>
                   </span>
                 </div>
               </div>
@@ -248,17 +224,13 @@ export default function HostPage() {
             {top3[2] && (
               <div className="podiumCard podium3">
                 <span className="podiumRank red">🥉 #3</span>
-
-                <div style={{ marginTop: 10 }}>
-                  <ViewerIdentity r={top3[2]} size={52} />
-                </div>
-
-                <div className="podiumMeta" style={{ marginTop: 10 }}>
+                <div className="podiumName">{top3[2].pseudo}</div>
+                <div className="podiumMeta">
                   <span>
                     Score <b>{top3[2].score}</b>
                   </span>
                   <span>
-                    Fautes <b>{top3[2].erreurs ?? "?"}</b>
+                    Fautes <b>{getFautes(top3[2])}</b>
                   </span>
                 </div>
               </div>
@@ -275,17 +247,14 @@ export default function HostPage() {
       {rows.map((r, i) => (
         <div key={i} className="rankItem">
           <div className="row" style={{ justifyContent: "space-between" }}>
-            <div className="rankLeft" style={{ gap: 10 }}>
-              <div className="rankPos">#{i + 1}</div>
-              <ViewerIdentity r={r} size={36} />
+            <div style={{ fontWeight: 900, fontSize: 16 }}>
+              #{i + 1} {r.pseudo}
             </div>
 
             <span className="badge">
               Score <b style={{ color: "rgba(15,23,42,0.92)" }}>{r.score}</b> •
               Fautes{" "}
-              <b style={{ color: "rgba(185,28,28,.95)" }}>
-                {r.erreurs ?? "?"}
-              </b>
+              <b style={{ color: "rgba(185,28,28,.95)" }}>{getFautes(r)}</b>
             </span>
           </div>
 
@@ -297,6 +266,11 @@ export default function HostPage() {
                 {(() => {
                   const severeSet = buildSevereSet(r.diff);
 
+                  // ✅ AFFICHAGE "VIEWER-ONLY"
+                  // - ok: mot du viewer
+                  // - ins: mot en trop du viewer
+                  // - del: mot manquant -> on n'affiche rien (sinon ça réinjecte la référence)
+                  // - sub: mauvais mot du viewer barré + bon mot à côté
                   return r.diff.map((t: any, idx: number) => {
                     const isSevere = severeSet.has(idx);
                     const extra = isSevere ? " severePulse" : "";
@@ -310,6 +284,7 @@ export default function HostPage() {
                     }
 
                     if (t.type === "ins") {
+                      // ❌ pas de pulse sur ins
                       return (
                         <span key={idx} className="tIns">
                           {t.word}{" "}
@@ -317,18 +292,31 @@ export default function HostPage() {
                       );
                     }
 
-                    if (t.type === "del") {
-                      return null;
-                    }
+                   if (t.type === "del") {
+  return (
+    <span key={idx} className="tDel">
+      {t.word}{" "}
+    </span>
+  );
+}
 
-                    if (t.type === "sub") {
-                      return (
-                        <span key={idx}>
-                          <span className={"tSubWrong" + extra}>{t.to}</span>{" "}
-                          <span className="tSubCorrect">{t.from}</span>{" "}
-                        </span>
-                      );
-                    }
+
+                  if (t.type === "sub") {
+  const cls =
+    t.sev === "severe"
+      ? "tSubWrong severePulse"
+      : "tSubWrongMed";
+
+  return (
+    <span key={idx}>
+      <span className={cls}>{t.to}</span>{" "}
+      <span className="tSubCorrect">{t.from}</span>{" "}
+    </span>
+  );
+}
+
+
+
 
                     return null;
                   });
