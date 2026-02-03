@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   if (!code) return NextResponse.redirect("/");
 
   // ✅ redirect_uri identique à l'authorize
-const redirectUri = process.env.TWITCH_REDIRECT_URI;
+const redirectUri = process.env.TWITCH_REDIRECT_URI;  
 if (!redirectUri) {
   return new NextResponse("Missing TWITCH_REDIRECT_URI", { status: 500 });
 }
